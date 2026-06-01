@@ -29,10 +29,10 @@ watch(() => route.path, closeMobileMenu)
 <template>
   <div class="flex min-h-svh flex-col bg-white text-slate-800">
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
-      <div class="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <div class="site-container flex h-[4.25rem] items-center justify-between gap-4">
         <RouterLink
           to="/"
-          class="shrink-0 text-2xl font-semibold tracking-tight text-cyan-700 transition-colors hover:text-cyan-900"
+          class="shrink-0 text-xl font-semibold tracking-tight text-cyan-700 transition-colors hover:text-cyan-900"
           @click="closeMobileMenu"
         >
           {{ t(labName) }}
@@ -43,7 +43,7 @@ watch(() => route.path, closeMobileMenu)
             v-for="item in navLinks"
             :key="item.key"
             :to="item.path"
-            class="rounded-md px-3 py-2 text-lg font-medium transition-colors"
+            class="rounded-md px-3 py-2 text-base font-medium transition-colors"
             :class="
               isActive(item.path)
                 ? 'bg-cyan-50 text-cyan-800'
@@ -96,12 +96,12 @@ watch(() => route.path, closeMobileMenu)
         class="border-t border-slate-200 bg-white md:hidden"
         aria-label="Mobile navigation"
       >
-        <div class="mx-auto max-w-6xl space-y-1 px-4 py-3 sm:px-6 lg:px-8">
+        <div class="site-container space-y-1 py-3">
           <RouterLink
             v-for="item in navLinks"
             :key="item.key"
             :to="item.path"
-            class="block rounded-md px-3 py-3 text-lg font-medium transition-colors"
+            class="block rounded-md px-3 py-3 text-base font-medium transition-colors"
             :class="
               isActive(item.path)
                 ? 'bg-cyan-50 text-cyan-800'
@@ -115,7 +115,7 @@ watch(() => route.path, closeMobileMenu)
       </nav>
     </header>
 
-    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+    <main class="site-container flex-1 py-8">
       <RouterView />
     </main>
 

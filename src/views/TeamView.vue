@@ -1,11 +1,104 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import {
+  directusPublicAssetUrl,
+  fetchTeamLeaderInfo,
+  fetchTeamMember,
+  type TeamLeaderInfoRecord,
+  type TeamMemberRecord,
+} from '@/api/directus'
 import { useLocale } from '@/composables/useLocale'
-import { useLab } from '@/composables/useLab'
+import { getTranslatedField } from '@/utils/translation'
 
-const { t } = useLocale()
-const lab = useLab()
+const { t, locale } = useLocale()
+const teamMembers = ref<TeamMemberRecord[]>([])
+const teamLeaderInfo = ref<TeamLeaderInfoRecord | null>(null)
 
-const totalMembers = lab.members.length
+const defaultAvatar =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"%3E%3Crect width="128" height="128" rx="64" fill="%23e0f2fe"/%3E%3Ccircle cx="64" cy="46" r="24" fill="%230e7490"/%3E%3Cpath d="M24 112c6-24 22-38 40-38s34 14 40 38" fill="%230e7490"/%3E%3C/svg%3E'
+
+const totalMembers = computed(() => teamMembers.value.length)
+
+const teamMemberGroups = computed(() => {
+  const grouped = new Map<string, TeamMemberRecord[]>()
+  for (const member of teamMembers.value) {
+    const type = member.type || 'Team Members'
+    const list = grouped.get(type) ?? []
+    list.push(member)
+    grouped.set(type, list)
+  }
+
+  return [...grouped.entries()].map(([type, members]) => ({
+    key: type,
+    label: type,
+    members,
+  }))
+})
+
+function getMemberName(member: TeamMemberRecord) {
+  return getTranslatedField(member, 'name', locale.value)
+}
+
+function getMemberRole(member: TeamMemberRecord) {
+  return getTranslatedField(member, 'title', locale.value)
+}
+
+function getMemberResearch(member: TeamMemberRecord) {
+  return getTranslatedField(member, 'description', locale.value)
+}
+
+function getMemberAvatar(member: TeamMemberRecord) {
+  return member.avatar ? directusPublicAssetUrl(member.avatar) : defaultAvatar
+}
+
+function getLeaderField(field: string) {
+  return getTranslatedField(teamLeaderInfo.value, field, locale.value)
+}
+
+function getLeaderAvatar() {
+  return teamLeaderInfo.value?.avatar ? directusPublicAssetUrl(teamLeaderInfo.value.avatar) : defaultAvatar
+}
+
+function getLeaderExperience() {
+  const current = teamLeaderInfo.value
+  if (!current) return ''
+
+  const matchedTranslation = (current.translations ?? []).find((item) =>
+    String(item?.languages_code || '')
+      .toLowerCase()
+      .startsWith(locale.value === 'en' ? 'en' : 'zh'),
+  )
+
+  const source = locale.value === 'en' ? matchedTranslation?.experience ?? current.experience : current.experience
+
+  if (Array.isArray(source)) {
+    return source
+      .map((item) => (typeof item === 'object' && item !== null ? String((item as { value?: unknown }).value ?? '') : String(item)))
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return String(source ?? '')
+}
+
+onMounted(async () => {
+  const [memberResult, leaderResult] = await Promise.allSettled([
+    fetchTeamMember(),
+    fetchTeamLeaderInfo(),
+  ])
+
+  if (memberResult.status === 'fulfilled') {
+    teamMembers.value = memberResult.value?.data ?? []
+  } else {
+    console.error('[TeamView] fetchTeamMember failed:', memberResult.reason)
+  }
+
+  if (leaderResult.status === 'fulfilled') {
+    teamLeaderInfo.value = leaderResult.value?.data ?? null
+  } else {
+    console.error('[TeamView] fetchTeamLeaderInfo failed:', leaderResult.reason)
+  }
+})
 </script>
 
 <template>
@@ -18,18 +111,11 @@ const totalMembers = lab.members.length
       <h1 class="mt-3 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
         {{ t({ zh: '研究团队', en: 'Our Team' }) }}
       </h1>
-      <p class="mt-4 max-w-2xl text-lg leading-relaxed text-slate-500 sm:text-xl">
-        {{
-          t({
-            zh: '汇聚多模态 AI 与机器人学领域的优秀研究者，共同探索具身智能前沿。',
-            en: 'Researchers in multimodal AI and robotics advancing embodied intelligence.',
-          })
-        }}
-      </p>
+      <p class="mt-4 max-w-2xl text-lg leading-relaxed text-slate-500 sm:text-xl">{{ getLeaderField('teamInfo') }}</p>
     </header>
 
     <!-- PI -->
-    <section v-if="lab.pi" aria-labelledby="pi-heading">
+    <section v-if="teamLeaderInfo" aria-labelledby="pi-heading">
       <h2 id="pi-heading" class="sr-only">
         {{ t({ zh: '实验室负责人', en: 'Principal Investigator' }) }}
       </h2>
@@ -53,8 +139,8 @@ const totalMembers = lab.members.length
               class="relative mx-auto aspect-[4/5] max-h-[320px] w-full overflow-hidden rounded-xl ring-2 ring-cyan-500/30 ring-offset-2 ring-offset-slate-900 sm:max-h-none lg:aspect-auto lg:h-full lg:min-h-[380px] lg:max-h-none"
             >
               <img
-                :src="lab.pi.avatar"
-                :alt="t(lab.pi.name)"
+                :src="getLeaderAvatar()"
+                :alt="getLeaderField('name')"
                 class="h-full w-full object-cover object-top"
               />
               <div
@@ -69,26 +155,26 @@ const totalMembers = lab.members.length
               class="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-4 py-1.5 text-sm font-medium tracking-wide text-cyan-300"
             >
               <span class="h-1.5 w-1.5 rounded-full bg-cyan-400" aria-hidden="true" />
-              {{ t({ zh: '实验室负责人', en: 'Principal Investigator' }) }}
+              {{ getLeaderField('tag') }}
             </span>
             <h3 class="mt-5 text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-              {{ t(lab.pi.name) }}
+              {{ getLeaderField('name') }}
             </h3>
-            <p class="mt-3 text-lg text-cyan-300/90 sm:text-xl">{{ t(lab.pi.role) }}</p>
+            <p class="mt-3 text-lg text-cyan-300/90 sm:text-xl">{{ getLeaderField('role') }}</p>
             <p class="mt-5 text-base leading-relaxed text-slate-300 sm:text-lg">
               <span class="font-medium text-slate-200">
                 {{ t({ zh: '研究方向', en: 'Research' }) }}：
               </span>
-              {{ t(lab.pi.research) }}
+              {{ getLeaderField('research') }}
             </p>
-            <p v-if="lab.pi.bio" class="mt-5 text-base leading-relaxed text-slate-400 sm:text-lg">
-              {{ t(lab.pi.bio) }}
+            <p v-if="getLeaderField('bio')" class="mt-5 text-base leading-relaxed text-slate-400 sm:text-lg">
+              {{ getLeaderField('bio') }}
             </p>
             <p
-              v-if="lab.pi.experience"
-              class="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm leading-relaxed text-slate-400"
+              v-if="getLeaderExperience()"
+              class="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm leading-relaxed whitespace-pre-line text-slate-400"
             >
-              {{ t(lab.pi.experience) }}
+              {{ getLeaderExperience() }}
             </p>
           </div>
         </div>
@@ -116,7 +202,7 @@ const totalMembers = lab.members.length
       </div>
 
       <div
-        v-for="group in lab.membersByGroup"
+        v-for="group in teamMemberGroups"
         :key="group.key"
         class="scroll-mt-24"
         :aria-labelledby="`group-${group.key}`"
@@ -128,7 +214,7 @@ const totalMembers = lab.members.length
             :id="`group-${group.key}`"
             class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl"
           >
-            {{ t(group.label) }}
+            {{ group.label }}
           </h3>
           <span
             class="w-fit rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600 sm:text-base"
@@ -154,24 +240,24 @@ const totalMembers = lab.members.length
                   aria-hidden="true"
                 />
                 <img
-                  :src="member.avatar"
-                  :alt="t(member.name)"
+                  :src="getMemberAvatar(member)"
+                  :alt="getMemberName(member)"
                   class="relative h-28 w-28 rounded-full object-cover ring-4 ring-white sm:h-32 sm:w-32"
                   loading="lazy"
                 />
               </div>
               <div class="mt-5 text-center">
                 <h4 class="text-xl font-semibold text-slate-900 sm:text-2xl">
-                  {{ t(member.name) }}
+                  {{ getMemberName(member) }}
                 </h4>
                 <p class="mt-2 text-base font-medium text-cyan-700 sm:text-lg">
-                  {{ t(member.role) }}
+                  {{ getMemberRole(member) }}
                 </p>
               </div>
               <p
                 class="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-center text-sm leading-relaxed text-slate-600 sm:text-base"
               >
-                {{ t(member.research) }}
+                {{ getMemberResearch(member) }}
               </p>
             </div>
           </article>

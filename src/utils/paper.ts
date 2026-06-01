@@ -1,4 +1,4 @@
-import { directusAssetUrl } from '@/api/directus'
+import { directusPublicAssetUrl } from '@/api/directus'
 
 export interface PaperAuthor {
   value: string
@@ -27,5 +27,5 @@ export function formatAuthors(authors: PaperAuthor[] = []) {
 }
 
 export function getPaperImage(paper: Paper) {
-  return paper?.paperImg ? directusAssetUrl(paper.paperImg) : ''
+  return paper?.paperImg ? directusPublicAssetUrl(paper.paperImg) : ''
 }

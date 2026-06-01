@@ -1,20 +1,64 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { directusPublicAssetUrl, fetchNews, type NewsRecord } from '@/api/directus'
 import { useLocale } from '@/composables/useLocale'
-import { useLab } from '@/composables/useLab'
+import { getTranslatedField } from '@/utils/translation'
 
 const route = useRoute()
-const { t } = useLocale()
-const lab = useLab()
+const { t, locale } = useLocale()
+const newsList = ref<NewsRecord[]>([])
+const currentImageIndex = ref(0)
 
-const article = computed(() => lab.getNewsById(route.params.id as string))
+const article = computed(() =>
+  newsList.value.find((item) => String(item.id) === String(route.params.id)),
+)
+
+const articleImageUrls = computed(() => {
+  const item = article.value
+  if (!item) return []
+  if (item.image) return [directusPublicAssetUrl(String(item.image))]
+  return (item.imgList ?? []).map((img) => directusPublicAssetUrl(String(img))).filter(Boolean)
+})
+
+function getArticleField(field: 'title' | 'description' | 'newsContent' | 'date') {
+  return getTranslatedField(article.value, field, locale.value)
+}
 
 const paragraphs = computed(() => {
   if (!article.value) return []
-  const text = t(article.value.content)
+  const text = getArticleField('newsContent')
   return text.split(/\n\n+/).filter(Boolean)
 })
+
+function showPrevImage() {
+  if (!articleImageUrls.value.length) return
+  currentImageIndex.value =
+    (currentImageIndex.value - 1 + articleImageUrls.value.length) % articleImageUrls.value.length
+}
+
+function showNextImage() {
+  if (!articleImageUrls.value.length) return
+  currentImageIndex.value = (currentImageIndex.value + 1) % articleImageUrls.value.length
+}
+
+async function loadNews() {
+  try {
+    const res = await fetchNews()
+    newsList.value = res?.data ?? []
+  } catch (e) {
+    console.error('[NewsDetailView] fetchNews failed:', e)
+  }
+}
+
+watch(
+  () => route.params.id,
+  () => {
+    currentImageIndex.value = 0
+  },
+)
+
+onMounted(loadNews)
 </script>
 
 <template>
@@ -39,28 +83,61 @@ const paragraphs = computed(() => {
     <article>
       <header>
         <time class="font-mono text-sm text-cyan-700 sm:text-base">
-          {{ article.date }}
+          {{ getArticleField('date') }}
         </time>
         <h1
           class="mt-4 text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl"
         >
-          {{ t(article.title) }}
+          {{ getArticleField('title') }}
         </h1>
         <p class="mt-4 max-w-3xl text-lg leading-relaxed text-slate-500 sm:text-xl">
-          {{ t(article.summary) }}
+          {{ getArticleField('description') }}
         </p>
       </header>
 
       <div class="relative mt-10 overflow-hidden rounded-2xl shadow-xl shadow-slate-200/60">
         <img
-          :src="article.image"
-          :alt="t(article.title)"
+          :src="articleImageUrls[currentImageIndex]"
+          :alt="getArticleField('title')"
           class="aspect-[21/9] w-full object-cover sm:aspect-[2/1]"
         />
         <div
           class="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent"
           aria-hidden="true"
         />
+        <button
+          v-if="articleImageUrls.length > 1"
+          type="button"
+          class="absolute top-1/2 left-3 -translate-y-1/2 rounded-full bg-white/85 p-2 text-slate-700 shadow-md transition hover:bg-white"
+          :aria-label="t({ zh: '上一张', en: 'Previous image' })"
+          @click.prevent="showPrevImage"
+        >
+          ‹
+        </button>
+        <button
+          v-if="articleImageUrls.length > 1"
+          type="button"
+          class="absolute top-1/2 right-3 -translate-y-1/2 rounded-full bg-white/85 p-2 text-slate-700 shadow-md transition hover:bg-white"
+          :aria-label="t({ zh: '下一张', en: 'Next image' })"
+          @click.prevent="showNextImage"
+        >
+          ›
+        </button>
+      </div>
+      <div
+        v-if="articleImageUrls.length > 1"
+        class="mt-4 flex gap-3 overflow-x-auto pb-1"
+      >
+        <button
+          v-for="(img, idx) in articleImageUrls"
+          :key="`${article?.id}-${idx}`"
+          type="button"
+          class="shrink-0 overflow-hidden rounded-lg border-2 transition"
+          :class="idx === currentImageIndex ? 'border-cyan-500' : 'border-transparent'"
+          @click="currentImageIndex = idx"
+        >
+          <img :src="img" :alt="`${getArticleField('title')}-${idx + 1}`" class="h-16 w-28 object-cover" />
+        </button>
       </div>
 
       <div

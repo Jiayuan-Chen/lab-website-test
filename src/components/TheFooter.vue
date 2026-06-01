@@ -1,29 +1,40 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { directusPublicAssetUrl, fetchContactUs, type ContactUsRecord } from '@/api/directus'
 import { useLocale } from '@/composables/useLocale'
-import { labName } from '@/constants/nav'
+import { labName as defaultLabName } from '@/constants/nav'
+import { getTranslatedField } from '@/utils/translation'
 
-const { t } = useLocale()
+const { t, locale } = useLocale()
+const contactUs = ref<ContactUsRecord | null>(null)
 
-const year = new Date().getFullYear()
+onMounted(async () => {
+  try {
+    const res = await fetchContactUs()
+    contactUs.value = res.data ?? null
+  } catch (e) {
+    console.error('[TheFooter] fetchContactUs failed:', e)
+  }
+})
 
-const email = 'join@iilab.example.edu'
-const githubUrl = 'https://github.com/'
-const scholarUrl = 'https://scholar.google.com/'
-
-const address = computed(() =>
-  t({
-    zh: '北京市海淀区 XX 大学 XX 楼 XXX 室',
-    en: 'Room XXX, XX Building, XX University, Haidian District, Beijing',
-  }),
+const footerLabName = computed(
+  () => getTranslatedField(contactUs.value, 'labName', locale.value) || t(defaultLabName),
 )
 
-const copyright = computed(() =>
-  t({
-    zh: `© ${year} ${t(labName)}。保留所有权利。`,
-    en: `© ${year} ${t(labName)}. All Rights Reserved.`,
-  }),
-)
+const copyright = computed(() => getTranslatedField(contactUs.value, 'copyright', locale.value))
+
+const address = computed(() => getTranslatedField(contactUs.value, 'address', locale.value))
+
+const email = computed(() => getTranslatedField(contactUs.value, 'email', locale.value))
+
+const githubUrl = computed(() => getTranslatedField(contactUs.value, 'github', locale.value))
+
+const contactTip = computed(() => getTranslatedField(contactUs.value, 'tip', locale.value))
+
+const weChatQrUrl = computed(() => {
+  const qr = contactUs.value?.WeChat_QR
+  return qr ? directusPublicAssetUrl(qr) : ''
+})
 
 const toastOpen = ref(false)
 const toastText = ref('')
@@ -64,7 +75,8 @@ async function copyToClipboard(text: string) {
 }
 
 async function onEmailClick() {
-  const ok = await copyToClipboard(email)
+  if (!email.value) return
+  const ok = await copyToClipboard(email.value)
   showToast(
     ok
       ? t({ zh: '邮箱已复制', en: 'Email Copied!' })
@@ -75,16 +87,16 @@ async function onEmailClick() {
 
 <template>
   <footer class="mt-16 border-t border-slate-200/80 bg-slate-950 text-slate-300">
-    <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+    <div class="site-container py-12">
       <div class="flex flex-col items-center justify-between gap-10 text-center md:flex-row md:items-start md:text-left">
         <div class="max-w-xl">
           <p class="text-lg font-semibold tracking-tight text-white">
-            {{ t(labName) }}
+            {{ footerLabName }}
           </p>
-          <p class="mt-3 text-sm leading-relaxed text-slate-400 sm:text-base">
+          <p v-if="copyright" class="mt-3 text-sm leading-relaxed text-slate-400 sm:text-base">
             {{ copyright }}
           </p>
-          <p class="mt-2 text-sm leading-relaxed text-slate-400 sm:text-base">
+          <p v-if="address" class="mt-2 text-sm leading-relaxed text-slate-400 sm:text-base">
             {{ address }}
           </p>
         </div>
@@ -97,6 +109,7 @@ async function onEmailClick() {
           <div class="flex items-center gap-3">
             <!-- Email (copy + toast) -->
             <button
+              v-if="email"
               type="button"
               class="group inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-all hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
               :aria-label="t({ zh: '复制邮箱', en: 'Copy email' })"
@@ -120,6 +133,7 @@ async function onEmailClick() {
 
             <!-- GitHub -->
             <a
+              v-if="githubUrl"
               :href="githubUrl"
               target="_blank"
               rel="noopener noreferrer"
@@ -136,7 +150,7 @@ async function onEmailClick() {
             </a>
 
             <!-- WeChat (hover popover) -->
-            <div class="group relative">
+            <div v-if="weChatQrUrl" class="group relative">
               <button
                 type="button"
                 class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-all hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
@@ -157,7 +171,7 @@ async function onEmailClick() {
               </button>
 
               <div
-                class="pointer-events-none absolute bottom-full left-1/2 mb-4 w-52 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0"
+                class="pointer-events-none absolute bottom-full left-1/2 mb-4 w-64 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0"
               >
                 <div class="rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl shadow-black/40 backdrop-blur">
                   <div class="mb-3 flex items-center justify-between">
@@ -168,46 +182,22 @@ async function onEmailClick() {
                   </div>
                   <div
                     class="grid place-items-center rounded-xl border border-white/10 bg-white/5 p-4"
-                    aria-hidden="true"
                   >
-                    <div class="h-28 w-28 rounded-lg bg-[linear-gradient(rgba(6,182,212,0.10)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.10)_1px,transparent_1px)] bg-[size:12px_12px]">
-                      <div class="flex h-full w-full items-center justify-center">
-                        <span class="font-mono text-[10px] font-semibold text-cyan-200/80">QR</span>
-                      </div>
-                    </div>
+                    <img
+                      :src="weChatQrUrl"
+                      :alt="t({ zh: '微信公众号二维码', en: 'WeChat QR code' })"
+                      class="h-40 w-40 rounded-lg object-contain sm:h-44 sm:w-44"
+                      loading="lazy"
+                    />
                   </div>
                 </div>
                 <div class="mx-auto mt-2 h-2 w-2 rotate-45 border border-white/10 bg-slate-950/95" />
               </div>
             </div>
-
-            <!-- Google Scholar -->
-            <a
-              :href="scholarUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="group inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-all hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
-              aria-label="Google Scholar"
-            >
-              <svg class="h-5 w-5 transition-transform group-hover:scale-105" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M12 3 2.5 8l9.5 5 9.5-5L12 3Z"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M6.5 10.5V15c0 2.9 2.46 5.25 5.5 5.25S17.5 17.9 17.5 15v-4.5"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </a>
           </div>
 
-          <p class="text-sm text-slate-500 sm:text-base">
-            {{ t({ zh: '点击邮箱图标可复制地址', en: 'Click the email icon to copy the address' }) }}
+          <p v-if="contactTip" class="text-sm text-slate-500 sm:text-base">
+            {{ contactTip }}
           </p>
         </div>
       </div>
@@ -228,4 +218,3 @@ async function onEmailClick() {
     </div>
   </footer>
 </template>
-

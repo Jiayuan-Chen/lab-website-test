@@ -1,33 +1,106 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { directusPublicAssetUrl, fetchIntruduce, fetchNews, fetchPapers, type NewsRecord } from '@/api/directus'
 import { useLocale } from '@/composables/useLocale'
-import { useLab } from '@/composables/useLab'
-import { fetchPapers } from '@/api/directus'
+import { getTranslatedIntruduceField, type Intruduce } from '@/utils/intruduce'
 import { formatAuthors, getPaperImage, type Paper } from '@/utils/paper'
+import { getTranslatedField } from '@/utils/translation'
 
-const { t } = useLocale()
-const lab = useLab()
+const { t, locale } = useLocale()
 const latestPapers = ref<Paper[]>([])
+const intruduceRawData = ref<Intruduce | null>(null)
+const newsList = ref<NewsRecord[]>([])
 
 const featuredPaper = computed(() => latestPapers.value[0])
 const otherPapers = computed(() => latestPapers.value.slice(1))
+
+const heroTagline = computed(() =>
+  getTranslatedIntruduceField(intruduceRawData.value, 'tag', locale.value),
+)
+const heroTitle = computed(() =>
+  getTranslatedIntruduceField(intruduceRawData.value, 'lab_name', locale.value),
+)
+const heroVision = computed(() =>
+  getTranslatedIntruduceField(intruduceRawData.value, 'lab_description', locale.value),
+)
+const introBody = computed(() =>
+  getTranslatedIntruduceField(intruduceRawData.value, 'lab_about', locale.value),
+)
+const latestNews = computed(() =>
+  [...newsList.value]
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+    .slice(0, 3),
+)
+
+function getNewsField(item: NewsRecord, field: 'title' | 'description' | 'date') {
+  return getTranslatedField(item, field, locale.value)
+}
+
+function getNewsCover(item: NewsRecord) {
+  if (item.image) {
+    return directusPublicAssetUrl(String(item.image))
+  }
+  const firstImage = item.imgList?.[0]
+  return firstImage ? directusPublicAssetUrl(String(firstImage)) : ''
+}
+
+const introStats = computed(() => {
+  const introData = intruduceRawData.value?.introData?.[0]
+  return [
+    {
+      value: introData?.founded || '2018',
+      label: { zh: '成立年份', en: 'Founded' },
+    },
+    {
+      value: introData?.top_papers || '30+',
+      label: { zh: '顶会论文', en: 'Top Papers' },
+    },
+    {
+      value: introData?.members || '21',
+      label: { zh: '团队成员', en: 'Members' },
+    },
+    {
+      value: introData?.research_areas || '4',
+      label: { zh: '研究方向', en: 'Research Areas' },
+    },
+  ]
+})
 
 /** NLP / 大模型 / 多模态主题首图 */
 const heroImage =
   'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1920&h=1080&fit=crop&q=80'
 
 onMounted(async () => {
-  try {
-    const res = await fetchPapers({ limit: 5 })
-    latestPapers.value = (res?.data ?? []).filter((p: Paper) => p.status === 'published')
-  } catch (e) {
-    console.error('[HomeView] fetchPapers failed:', e)
+  const [papersResult, intruduceResult, newsResult] = await Promise.allSettled([
+    fetchPapers({ limit: 5 }),
+    fetchIntruduce(),
+    fetchNews(),
+  ])
+
+  if (papersResult.status === 'fulfilled') {
+    latestPapers.value = (papersResult.value?.data ?? []).filter(
+      (p: Paper) => p.status === 'published',
+    )
+  } else {
+    console.error('[HomeView] fetchPapers failed:', papersResult.reason)
+  }
+
+  if (intruduceResult.status === 'fulfilled') {
+    intruduceRawData.value = intruduceResult.value?.data ?? null
+  } else {
+    console.error('[HomeView] fetchIntruduce failed:', intruduceResult.reason)
+  }
+
+  if (newsResult.status === 'fulfilled') {
+    newsList.value = newsResult.value?.data ?? []
+  } else {
+    console.error('[HomeView] fetchNews failed:', newsResult.reason)
   }
 })
 </script>
 
 <template>
-  <div class="-mx-4 -mt-8 space-y-20 text-base sm:-mx-6 sm:space-y-24 sm:text-lg lg:-mx-8">
+  <div class="-mx-6 -mt-8 space-y-20 text-base sm:-mx-10 sm:space-y-24 lg:-mx-16">
     <!-- Hero -->
     <section
       class="relative flex min-h-[min(88svh,720px)] items-end overflow-hidden sm:min-h-[min(78svh,680px)]"
@@ -56,17 +129,17 @@ onMounted(async () => {
           class="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-1.5 text-sm font-medium tracking-widest text-cyan-300 uppercase backdrop-blur-sm"
         >
           <span class="h-1.5 w-1.5 rounded-full bg-cyan-400" aria-hidden="true" />
-          {{ t(lab.home.hero.tagline) }}
+          {{ heroTagline }}
         </p>
         <h1
           class="mt-6 max-w-4xl text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl lg:leading-[1.08]"
         >
-          {{ t(lab.home.hero.title) }}
+          {{ heroTitle }}
         </h1>
         <p
           class="mt-6 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl sm:leading-relaxed"
         >
-          {{ t(lab.home.hero.vision) }}
+          {{ heroVision }}
         </p>
         <div class="mt-10 flex flex-wrap gap-4">
           <RouterLink
@@ -102,21 +175,16 @@ onMounted(async () => {
               {{ t({ zh: '关于我们', en: 'About' }) }}
             </span>
             <h2 class="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              {{ t(lab.home.intro.title) }}
+              {{ t({ zh: '实验室简介', en: 'About the Lab' }) }}
             </h2>
           </div>
           <p class="flex-1 text-lg leading-relaxed text-slate-600 sm:text-xl sm:leading-relaxed">
-            {{ t(lab.home.intro.body) }}
+            {{ introBody }}
           </p>
         </div>
         <div class="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div
-            v-for="stat in [
-              { value: '2018', label: { zh: '成立年份', en: 'Founded' } },
-              { value: '30+', label: { zh: '顶会论文', en: 'Top Papers' } },
-              { value: '21', label: { zh: '团队成员', en: 'Members' } },
-              { value: '4', label: { zh: '研究方向', en: 'Research Areas' } },
-            ]"
+            v-for="stat in introStats"
             :key="stat.label.zh"
             class="rounded-xl border border-slate-100 bg-white px-5 py-4 text-center shadow-sm"
           >
@@ -315,15 +383,16 @@ onMounted(async () => {
         class="mt-10 -mx-4 flex gap-5 overflow-x-auto px-4 pb-3 snap-x snap-mandatory scroll-smooth sm:mx-0 sm:hidden"
       >
         <RouterLink
-          v-for="item in lab.latestNews"
+          v-for="item in latestNews"
           :key="item.id"
           :to="`/news/${item.id}`"
           class="group w-[min(88vw,340px)] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-shadow hover:shadow-lg"
         >
           <div class="relative aspect-[16/10] overflow-hidden">
             <img
-              :src="item.image"
-              :alt="t(item.title)"
+              v-if="getNewsCover(item)"
+              :src="getNewsCover(item)"
+              :alt="getNewsField(item, 'title')"
               class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
             />
@@ -334,17 +403,17 @@ onMounted(async () => {
             <time
               class="absolute top-3 left-3 rounded-md bg-white/90 px-2.5 py-1 font-mono text-xs font-medium text-slate-700 backdrop-blur-sm sm:text-sm"
             >
-              {{ item.date }}
+              {{ getNewsField(item, 'date') }}
             </time>
           </div>
           <div class="p-5">
             <h3
               class="line-clamp-2 text-base font-semibold leading-snug text-slate-900 group-hover:text-cyan-800 sm:text-lg"
             >
-              {{ t(item.title) }}
+              {{ getNewsField(item, 'title') }}
             </h3>
             <p class="mt-3 line-clamp-2 text-sm leading-relaxed text-slate-500 sm:text-base">
-              {{ t(item.summary) }}
+              {{ getNewsField(item, 'description') }}
             </p>
           </div>
         </RouterLink>
@@ -353,15 +422,16 @@ onMounted(async () => {
       <!-- Desktop: card grid -->
       <div class="mt-10 hidden gap-7 sm:grid sm:grid-cols-2 lg:grid-cols-3">
         <RouterLink
-          v-for="item in lab.latestNews"
+          v-for="item in latestNews"
           :key="item.id"
           :to="`/news/${item.id}`"
           class="group flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-200/60 hover:shadow-lg"
         >
           <div class="relative aspect-[16/10] overflow-hidden">
             <img
-              :src="item.image"
-              :alt="t(item.title)"
+              v-if="getNewsCover(item)"
+              :src="getNewsCover(item)"
+              :alt="getNewsField(item, 'title')"
               class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
             />
@@ -371,14 +441,14 @@ onMounted(async () => {
             />
           </div>
           <div class="flex flex-1 flex-col p-6">
-            <time class="font-mono text-sm text-slate-400">{{ item.date }}</time>
+            <time class="font-mono text-sm text-slate-400">{{ getNewsField(item, 'date') }}</time>
             <h3
               class="mt-3 line-clamp-2 text-lg font-semibold leading-snug text-slate-900 group-hover:text-cyan-800 sm:text-xl"
             >
-              {{ t(item.title) }}
+              {{ getNewsField(item, 'title') }}
             </h3>
             <p class="mt-3 line-clamp-3 flex-1 text-base leading-relaxed text-slate-500">
-              {{ t(item.summary) }}
+              {{ getNewsField(item, 'description') }}
             </p>
             <span
               class="mt-5 inline-flex items-center gap-1 text-base font-medium text-cyan-700 opacity-0 transition-opacity group-hover:opacity-100"

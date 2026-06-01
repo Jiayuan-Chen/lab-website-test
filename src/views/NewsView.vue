@@ -1,9 +1,36 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { directusPublicAssetUrl, fetchNews, type NewsRecord } from '@/api/directus'
 import { useLocale } from '@/composables/useLocale'
-import { useLab } from '@/composables/useLab'
+import { getTranslatedField } from '@/utils/translation'
 
-const { t } = useLocale()
-const lab = useLab()
+const { t, locale } = useLocale()
+const newsList = ref<NewsRecord[]>([])
+
+const sortedNews = computed(() =>
+  [...newsList.value].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+)
+
+function getNewsField(item: NewsRecord, field: 'title' | 'description' | 'date') {
+  return getTranslatedField(item, field, locale.value)
+}
+
+function getNewsCover(item: NewsRecord) {
+  if (item.image) {
+    return directusPublicAssetUrl(String(item.image))
+  }
+  const firstImage = item.imgList?.[0]
+  return firstImage ? directusPublicAssetUrl(String(firstImage)) : ''
+}
+
+onMounted(async () => {
+  try {
+    const res = await fetchNews()
+    newsList.value = res?.data ?? []
+  } catch (e) {
+    console.error('[NewsView] fetchNews failed:', e)
+  }
+})
 </script>
 
 <template>
@@ -24,14 +51,14 @@ const lab = useLab()
         }}
       </p>
       <p class="mt-4 font-mono text-sm text-slate-400 sm:text-base">
-        {{ lab.sortedNews.length }}
+        {{ sortedNews.length }}
         {{ t({ zh: ' 条动态', en: ' articles' }) }}
       </p>
     </header>
 
     <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:gap-10">
       <RouterLink
-        v-for="(item, index) in lab.sortedNews"
+        v-for="(item, index) in sortedNews"
         :key="item.id"
         :to="`/news/${item.id}`"
         class="group flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-cyan-200/60 hover:shadow-lg"
@@ -42,8 +69,8 @@ const lab = useLab()
           :class="index === 0 ? 'aspect-[21/9] lg:aspect-auto lg:min-h-full' : 'aspect-[16/10]'"
         >
           <img
-            :src="item.image"
-            :alt="t(item.title)"
+            :src="getNewsCover(item)"
+            :alt="getNewsField(item, 'title')"
             class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             loading="lazy"
           />
@@ -54,7 +81,7 @@ const lab = useLab()
           <time
             class="absolute top-4 left-4 rounded-md bg-white/90 px-3 py-1.5 font-mono text-xs font-medium text-slate-700 backdrop-blur-sm sm:text-sm"
           >
-            {{ item.date }}
+            {{ getNewsField(item, 'date') }}
           </time>
           <span
             v-if="index === 0"
@@ -71,13 +98,13 @@ const lab = useLab()
             class="line-clamp-2 font-semibold leading-snug text-slate-900 transition-colors group-hover:text-cyan-800"
             :class="index === 0 ? 'text-xl sm:text-2xl lg:text-3xl' : 'text-lg sm:text-xl'"
           >
-            {{ t(item.title) }}
+            {{ getNewsField(item, 'title') }}
           </h2>
           <p
             class="mt-3 line-clamp-3 flex-1 leading-relaxed text-slate-500"
             :class="index === 0 ? 'text-base sm:text-lg' : 'text-sm sm:text-base'"
           >
-            {{ t(item.summary) }}
+            {{ getNewsField(item, 'description') }}
           </p>
           <span
             class="mt-5 inline-flex items-center gap-1 text-base font-medium text-cyan-700"

@@ -1,9 +1,19 @@
 @import 'tailwindcss';
 
+html {
+  font-size: 15px;
+}
+
 body {
   margin: 0;
 }
 
 #app {
   min-height: 100svh;
+}
+
+@layer components {
+  .site-container {
+    @apply mx-auto w-full max-w-6xl px-6 sm:px-10 lg:px-16;
+  }
 }
